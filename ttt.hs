@@ -1,5 +1,6 @@
 import qualified Data.Set as Set
 import Data.Set((\\))
+import qualified Data.Map as Map
 import Data.List(intersperse)
 import Debug.Trace
 
@@ -22,11 +23,11 @@ instance Show Field where
           | Set.member n (noughts field) = show Nought
           | otherwise = show Blank
 
-move :: Field -> Int -> Cell -> Field    
-move field n Cross = field { crosses = Set.insert n (crosses field), blanks = Set.delete n (blanks field) }
-move field n Nought = field { noughts = Set.insert n (noughts field), blanks = Set.delete n (blanks field) }
+makeMove :: Field -> Int -> Cell -> Field    
+makeMove field n Cross = field { crosses = Set.insert n (crosses field), blanks = Set.delete n (blanks field) }
+makeMove field n Nought = field { noughts = Set.insert n (noughts field), blanks = Set.delete n (blanks field) }
 
-initField = Field { crosses = Set.empty, noughts = Set.empty, blanks = Set.fromList [1..9] }
+blankField = Field { crosses = Set.empty, noughts = Set.empty, blanks = Set.fromList [1..9] }
 {--
 someField = Field { crosses = Set.fromList [1,4,5], noughts = Set.fromList [2,9] }
 testField1 = Field { crosses = Set.fromList [1], noughts = Set.fromList [5] }
@@ -34,43 +35,69 @@ testField2 = Field { crosses = Set.fromList [2,8], noughts = Set.fromList [1] }
 testField3 = Field { crosses = Set.fromList [1,2,7], noughts = Set.fromList [3,4,5] }
 --}
 
-streaks :: [Set.Set Int]
-streaks = [Set.fromList [1,2,3],
-           Set.fromList [4,5,6],
-           Set.fromList [7,8,9],
-           Set.fromList [1,4,7],
-           Set.fromList [2,5,8],
-           Set.fromList [3,6,9],
-           Set.fromList [1,5,9],
-           Set.fromList [3,5,7]]
+-- Caching
+
+encode :: Field -> Int
+encode field =
+    foldl encodeCell 0 [1..9]
+  where
+    encodeCell :: Int -> Int -> Int
+    encodeCell acc n
+      | Set.member n (blanks field)  = acc * 2
+      | Set.member n (crosses field) = acc * 4 + 2
+      | Set.member n (noughts field) = acc * 4 + 3
+
+newtype Cache = Cache (Map.Map Int (Int, Maybe Int)) deriving (Show)
+emptyCache = Cache Map.empty
+cacheLookup field (Cache m) = Map.lookup (encode field) m
+cacheInsert field entry (Cache m) = Cache (Map.insert (encode field) entry m)
+
+winningRows :: [Set.Set Int]
+winningRows = [Set.fromList [1,2,3],
+               Set.fromList [4,5,6],
+               Set.fromList [7,8,9],
+               Set.fromList [1,4,7],
+               Set.fromList [2,5,8],
+               Set.fromList [3,6,9],
+               Set.fromList [1,5,9],
+               Set.fromList [3,5,7]]
 
 gameOver :: Field -> Maybe Cell
 gameOver field 
-    | any (flip Set.isSubsetOf (crosses field)) streaks = Just Cross
-    | any (flip Set.isSubsetOf (noughts field)) streaks = Just Nought
+    | any (flip Set.isSubsetOf (crosses field)) winningRows = Just Cross
+    | any (flip Set.isSubsetOf (noughts field)) winningRows = Just Nought
     | (Set.size (crosses field)) + (Set.size (noughts field)) == 9 = Just Blank
     | otherwise = Nothing
+
+minimax :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
+minimax field movesNext cache =
+    case cacheLookup field cache of
+        Just (score, move) -> (score, move, cache)
+        Nothing -> minimax' field movesNext cache
    
-minimax :: Field -> Cell -> (Int, Maybe Int)
-minimax field movesNext =
-    case gameOver field of
-    Just Blank -> (0, Nothing)
-    Just Cross -> (1 + length (blanks field), Nothing)
-    Just Nought -> (-1 - length (blanks field), Nothing)
-    _ -> if movesNext == Cross
-             then foldr maximize (minBound :: Int, Nothing) $ blanks field
-             else foldr minimize (maxBound :: Int, Nothing) $ blanks field 
-                where
-                  maximize n old@(bestScore, _) =
-                      let (score, _) = minimax (move field n Cross) Nought
-                      in  if score > bestScore
-                              then (score, Just n)
-                              else old
-                  minimize n old@(bestScore, _) =
-                      let (score, _) = minimax (move field n Nought) Cross
-                      in  if score < bestScore
-                              then (score, Just n)
-                              else old
+minimax' :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
+minimax' field movesNext cache =
+    (score, move, cacheInsert field (score, move) newCache)
+  where
+    (score, move, newCache) =
+        case gameOver field of
+        Just Blank -> (0, Nothing, cache)
+        Just Cross -> (1 + length (blanks field), Nothing, cache)
+        Just Nought -> (-1 - length (blanks field), Nothing, cache)
+        _ -> if movesNext == Cross
+                 then foldr maximize (minBound :: Int, Nothing, cache) $ blanks field
+                 else foldr minimize (maxBound :: Int, Nothing, cache) $ blanks field 
+               where
+                 maximize n (bestScore, bestMove, oldCache) =
+                     let (newScore, newMove, newCache) = minimax (makeMove field n Cross) Nought oldCache
+                     in  if newScore > bestScore
+                             then (newScore, Just n, newCache)
+                             else (bestScore, bestMove, newCache)
+                 minimize n (bestScore, bestMove, oldCache) =
+                     let (newScore, newMove, newCache) = minimax (makeMove field n Nought) Cross oldCache
+                     in  if newScore < bestScore
+                             then (newScore, Just n, newCache)
+                             else (bestScore, bestMove, newCache)
                         
 step :: Field -> Int -> Field
 step field _ =
@@ -78,20 +105,21 @@ step field _ =
     let player = if odd $ Set.size $ blanks field
                      then Cross
                      else Nought
-        (score, m) = minimax field player
-    in  case m of
-        Just n -> move field n player
+        (score, move, Cache cache) = minimax field player emptyCache
+    in  traceShow (Map.size cache) $
+        case move of
+        Just n -> makeMove field n player
         Nothing -> field
                               
 main = do
 --    print testField3
   --  print $ availableMoves testField3
-    print $ minimax initField Cross
+--    print $ minimax blankField Cross emptyCache
 --    print $ minimax someField Nought
 --    print $ minimax testField1 Cross
 --    print $ minimax testField2 Nought
 --    print $ minimax testField3 Cross
     
-    print $ foldl step initField [1..9]
+    print $ foldl step blankField [1..9]
 --    print $ foldl step testField2 [4..9]
 
