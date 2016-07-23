@@ -76,11 +76,7 @@ minimax :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
 minimax field movesNext cache =
     case cacheLookup field cache of
         Just (score, move) -> (score, move, cache)
-        Nothing -> minimax' field movesNext cache
-   
-minimax' :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
-minimax' field movesNext cache =
-    (score, move, cacheInsert field (score, move) newCache)
+        Nothing -> (score, move, cacheInsert field (score, move) newCache)
   where
     (score, move, newCache) =
         case gameOver field of
@@ -101,7 +97,7 @@ minimax' field movesNext cache =
                      in  if newScore < bestScore
                              then (newScore, Just n, newCache)
                              else (bestScore, bestMove, newCache)
-                        
+                            
 step :: Field -> Int -> Field
 step field _ =
     traceShow field $
