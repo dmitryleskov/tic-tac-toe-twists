@@ -1,3 +1,4 @@
+import Data.List(sort, group)
 import qualified Data.Map as Map
 import Data.Map((!))
 import qualified Data.Set as Set
@@ -153,6 +154,17 @@ cacheInsert (Cache m) hash delta entry =
         Nothing -> Cache (Map.insert hash [(delta, entry)] m)
         Just bucket -> Cache (Map.insertWith (++) hash [(delta, entry)] m)
 
+cacheStats :: Cache -> [(Int, Int)]
+cacheStats (Cache m) =
+    map (\ss -> (head ss, length ss)) (group $ sort  $ Map.fold collect [] m)
+  where
+    collect :: [(Delta, (Int, Maybe Move))] -> [Int] -> [Int]
+    collect bucket stats =
+        (foldl collect1 [] bucket) ++ stats
+      where
+        collect1 :: [Int] -> (Delta, (Int, Maybe Move)) -> [Int]
+        collect1 acc (_, (score, _)) = score : acc
+
 minimax :: Field -> Int -> Cache -> (Int, Maybe Move, Cache)
 minimax field depth cache =
     case cacheLookup cache (deltaHash field) (delta field) of
@@ -192,5 +204,8 @@ main = do
 --    print testField3
   --  print $ availableMoves testField3
     --print $ minimax testField3 Cross
-    print $ minimax blankField 3 emptyCache
+    print $ score
+    print $ cacheStats cache
+  where
+    (score, _, cache) = minimax blankField 3 emptyCache
 
