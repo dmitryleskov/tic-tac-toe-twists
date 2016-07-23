@@ -48,8 +48,11 @@ encode field =
       | Set.member n (noughts field) = acc * 4 + 3
 
 newtype Cache = Cache (Map.Map Int (Int, Maybe Int)) deriving (Show)
+emptyCache :: Cache
 emptyCache = Cache Map.empty
+cacheLookup :: Field -> Cache -> Maybe (Int, Maybe Int)
 cacheLookup field (Cache m) = Map.lookup (encode field) m
+cacheInsert :: Field -> (Int, Maybe Int) -> Cache -> Cache
 cacheInsert field entry (Cache m) = Cache (Map.insert (encode field) entry m)
 
 winningRows :: [Set.Set Int]
@@ -66,7 +69,7 @@ gameOver :: Field -> Maybe Cell
 gameOver field 
     | any (flip Set.isSubsetOf (crosses field)) winningRows = Just Cross
     | any (flip Set.isSubsetOf (noughts field)) winningRows = Just Nought
-    | (Set.size (crosses field)) + (Set.size (noughts field)) == 9 = Just Blank
+    | null (blanks field) = Just Blank
     | otherwise = Nothing
 
 minimax :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
