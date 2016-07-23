@@ -72,31 +72,38 @@ gameOver field
     | null (blanks field) = Just Blank
     | otherwise = Nothing
 
-minimax :: Field -> Cell -> Cache -> (Int, Maybe Int, Cache)
-minimax field movesNext cache =
+minimax :: Field -> Cell -> Int -> Int -> Cache -> (Int, Maybe Int, Cache)
+minimax field movesNext alpha beta cache =
     case cacheLookup field cache of
         Just (score, move) -> (score, move, cache)
         Nothing -> (score, move, cacheInsert field (score, move) newCache)
   where
-    (score, move, newCache) =
+    (score, move, _, newCache) =
         case gameOver field of
-        Just Blank -> (0, Nothing, cache)
-        Just Cross -> (1 + length (blanks field), Nothing, cache)
-        Just Nought -> (-1 - length (blanks field), Nothing, cache)
+        Just Blank -> (0, Nothing, 0, cache)
+        Just Cross -> (1 + length (blanks field), Nothing, 0, cache)
+        Just Nought -> (-1 - length (blanks field), Nothing, 0, cache)
         _ -> if movesNext == Cross
-                 then foldr maximize (minBound :: Int, Nothing, cache) $ blanks field
-                 else foldr minimize (maxBound :: Int, Nothing, cache) $ blanks field 
+                 -- foldr picked over foldl due to its ability to terminate early
+                 then foldr maximize (minBound :: Int, Nothing, alpha, cache) $ blanks field
+                 else foldr minimize (maxBound :: Int, Nothing, beta, cache) $ blanks field 
                where
-                 maximize n (bestScore, bestMove, oldCache) =
-                     let (newScore, newMove, newCache) = minimax (makeMove field n Cross) Nought oldCache
-                     in  if newScore > bestScore
-                             then (newScore, Just n, newCache)
-                             else (bestScore, bestMove, newCache)
-                 minimize n (bestScore, bestMove, oldCache) =
-                     let (newScore, newMove, newCache) = minimax (makeMove field n Nought) Cross oldCache
-                     in  if newScore < bestScore
-                             then (newScore, Just n, newCache)
-                             else (bestScore, bestMove, newCache)
+                 maximize n best@(bestScore, bestMove, alpha, oldCache)
+                     | alpha >= beta = best
+                     | otherwise = 
+                        let (newScore, newMove, newCache) =
+                                minimax (makeMove field n Cross) Nought alpha beta oldCache
+                        in  if newScore > bestScore
+                                then (newScore, Just n, max alpha newScore, newCache)
+                                else (bestScore, bestMove, max alpha bestScore, newCache)
+                 minimize n best@(bestScore, bestMove, beta, oldCache)
+                     | beta <= alpha = best
+                     | otherwise = 
+                        let (newScore, newMove, newCache) =
+                                minimax (makeMove field n Nought) Cross alpha beta oldCache
+                        in  if newScore < bestScore
+                                then (newScore, Just n, min beta newScore, newCache)
+                                else (bestScore, bestMove, min beta newScore, newCache)
                             
 step :: Field -> Int -> Field
 step field _ =
@@ -104,7 +111,7 @@ step field _ =
     let player = if odd $ Set.size $ blanks field
                      then Cross
                      else Nought
-        (score, move, Cache cache) = minimax field player emptyCache
+        (score, move, Cache cache) = minimax field player (minBound :: Int) (maxBound :: Int) emptyCache
     in  traceShow (Map.size cache) $
         case move of
         Just n -> makeMove field n player
