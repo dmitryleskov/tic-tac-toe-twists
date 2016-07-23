@@ -1,8 +1,9 @@
 module GrowingField (
     Cell(..),
     Boundaries(..),
-    Field(boundaries,movesNext),
+    Field(delta,deltaHash,boundaries,movesNext),
     Move,
+    Delta,
     cell,
     width,
     height,
@@ -83,10 +84,10 @@ type Move = (Int, Int)
 moveXYToMove :: MoveXY -> Move
 moveXYToMove ((x, y), (bx, by)) = (xyToIndex x y, xyToIndex bx by)
 
-type MoveRec = (Int, Cell, Int)
+type Delta = Set.Set (Int, Cell, Int)
 
 data Field = Field { base :: Map.Map Int Cell,  -- Playing field 
-                     delta :: Set.Set MoveRec,  -- Moves made since base case
+                     delta :: Delta,            -- Moves made since base case
                      deltaHash :: Int,          -- Hash for caching deltas
                      neighbours :: Set.Set Int, -- Indices of candidates for field expansion
                      boundaries :: Boundaries,  -- Bounding rectangle (includes neightbours)
@@ -119,7 +120,7 @@ blankField :: Field
 blankField =
     Field { base = blanks,
             delta = Set.empty,
-            deltaHash = 0,
+            deltaHash = 1,
             neighbours = findNeighbours blanks,
             boundaries = Boundaries { minX = -2, minY = -2, maxX = 2, maxY = 2 },
             movesNext = Cross }
@@ -149,8 +150,8 @@ tryMove :: Field -> Move -> Field
 tryMove field (markIndex, blankIndex) =
     Field { base = Map.insert markIndex (movesNext field) $
                    Map.insert blankIndex Blank (base field),
-            delta = Set.insert (markIndex, movesNext field, blankIndex) $ delta field ,
-            deltaHash = deltaHash field + 1,
+            delta = Set.insert (markIndex, movesNext field, blankIndex) $ delta field,
+            deltaHash = deltaHash field * (markIndex + 1) * blankIndex,
             neighbours = updateNeighbours (neighbours field) bx by,
             boundaries = updateBoundaries (boundaries field) bx by,
             movesNext = other $ movesNext field }

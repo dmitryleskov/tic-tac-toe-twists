@@ -118,34 +118,61 @@ scanField :: Field -> (Maybe Int, Maybe Int)
 scanField field =
     foldr bestRanks (Nothing, Nothing) $ map (uniScan field) scanRules
     
-score :: Field -> (Int, Maybe Cell)
-score field =
+assess :: Field -> (Int, Maybe Cell)
+assess field =
     case scanField field of
     (Nothing, Nothing) -> (0, Nothing)
     (Just 0, _) -> (maxBound :: Int, Just Cross) -- Crosses won
     (_, Just 0) -> (minBound :: Int, Just Nought) -- Noughts won
     (Just c, Just n) -> (n - c, Nothing)
-   
-minimax :: Field -> Int -> (Int, Maybe Move)
-minimax field depth =
-    --traceShow field $
-    case score field of
-    (s, Just _) -> (s, Nothing)
-    (s, _) | depth == 0 -> (s, Nothing)
-    _ -> if movesNext field == Cross
-             then foldl maximize (minBound :: Int, Nothing) $ availableMoves field
-             else foldl minimize (maxBound :: Int, Nothing) $ availableMoves field 
-                where
-                  maximize old@(bestScore, _) move =
-                      let (score, _) = minimax (tryMove field move) (depth - 1)
-                      in  if score > bestScore
-                              then (score, Just move)
-                              else old
-                  minimize old@(bestScore, _) move =
-                      let (score, _) = minimax (tryMove field move) (depth - 1)
-                      in  if score < bestScore
-                              then (score, Just move)
-                              else old
+
+newtype Cache = Cache (Map.Map Int [(Delta, (Int, Maybe Move))]) deriving (Show)
+emptyCache :: Cache
+emptyCache = Cache Map.empty
+cacheLookup :: Cache -> Int -> Delta -> Maybe (Int, Maybe Move)
+cacheLookup (Cache m) hash delta =
+    case Map.lookup hash m of
+        Nothing -> Nothing
+        Just bucket -> --trace ("Hash hit: " ++ (show hash) ++ " " ++ (show $ length bucket) ++ show bucket) $
+            lookup delta bucket
+        
+cacheInsert :: Cache -> Int -> Delta -> (Int, Maybe Move) -> Cache
+cacheInsert (Cache m) hash delta entry =
+    case Map.lookup hash m of
+        Nothing -> Cache (Map.insert hash [(delta, entry)] m)
+        Just bucket -> Cache (Map.insertWith (++) hash [(delta, entry)] m)
+
+minimax :: Field -> Int -> Cache -> (Int, Maybe Move, Cache)
+minimax field depth cache =
+    case cacheLookup cache (deltaHash field) (delta field) of
+        Just (score, move) -> (score, move, cache)
+        Nothing -> minimax' field depth cache
+  where   
+    minimax' :: Field -> Int -> Cache -> (Int, Maybe Move, Cache)
+    minimax' field depth cache =
+        (score, move, cacheInsert newCache (deltaHash field) (delta field) (score, move))
+      where
+        (score, move, newCache) =
+            --traceShow field $
+            case assess field of
+            (s, Just _) -> (s, Nothing, cache)
+            (s, _) | depth == 0 -> (s, Nothing, cache)
+            _ -> if movesNext field == Cross
+                     then foldl maximize (minBound :: Int, Nothing, cache) $ availableMoves field
+                     else foldl minimize (maxBound :: Int, Nothing, cache) $ availableMoves field 
+                        where
+                          maximize (bestScore, bestMove, oldCache) move =
+                              let (newScore, newMove, newCache) =
+                                      minimax (tryMove field move) (depth - 1) oldCache
+                              in  if newScore > bestScore
+                                      then (newScore, Just move, newCache)
+                                      else (bestScore, bestMove, newCache)
+                          minimize (bestScore, bestMove, oldCache) move =
+                              let (newScore, newMove, newCache) =
+                                      minimax (tryMove field move) (depth - 1) oldCache
+                              in  if newScore < bestScore
+                                      then (newScore, Just move, newCache)
+                                      else (bestScore, bestMove, newCache)
                               
 main = do
     --print $ minimax someField Nought
@@ -154,5 +181,5 @@ main = do
 --    print testField3
   --  print $ availableMoves testField3
     --print $ minimax testField3 Cross
-    print $ minimax blankField 2
+    print $ minimax blankField 3 emptyCache
 
