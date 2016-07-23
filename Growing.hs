@@ -132,8 +132,9 @@ emptyCache = Cache Map.empty
 cacheLookup :: Cache -> Int -> Delta -> Maybe (Int, Maybe Move)
 cacheLookup (Cache m) hash delta =
     case Map.lookup hash m of
-        Nothing -> Nothing
-        Just bucket -> --trace ("Hash hit: " ++ (show hash) ++ " " ++ (show $ length bucket) ++ show bucket) $
+        Nothing -> -- trace "No hit" $
+            Nothing
+        Just bucket -> -- trace ("Hash hit: " ++ (show hash) ++ " " ++ (show $ length bucket) ++ show bucket) $
             lookup delta bucket
         
 cacheInsert :: Cache -> Int -> Delta -> (Int, Maybe Move) -> Cache

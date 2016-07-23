@@ -150,12 +150,19 @@ tryMove :: Field -> Move -> Field
 tryMove field (markIndex, blankIndex) =
     Field { base = Map.insert markIndex (movesNext field) $
                    Map.insert blankIndex Blank (base field),
-            delta = Set.insert (markIndex, movesNext field, blankIndex) $ delta field,
-            deltaHash = deltaHash field * (markIndex + 1) * blankIndex,
+            delta = newDelta,
+            deltaHash = hash newDelta,
             neighbours = updateNeighbours (neighbours field) bx by,
             boundaries = updateBoundaries (boundaries field) bx by,
             movesNext = other $ movesNext field }
   where
+    newDelta = Set.insert (markIndex, movesNext field, blankIndex) $ delta field
+    hash delta =
+        foldl hash' 0 $ Set.toAscList delta
+      where
+        hash' :: Int -> (Int, Cell, Int) -> Int
+        hash' acc (m, Cross, b) = (acc + m + 1) * 1000 * b
+        hash' acc (m, Nought, b) = (acc + m + 1) * b
     (bx, by) = indexToXY blankIndex
     updateNeighbours ns x y =
         foldl (flip Set.insert) (Set.delete (xyToIndex x y) ns) (filter notInField $ candidates x y)
