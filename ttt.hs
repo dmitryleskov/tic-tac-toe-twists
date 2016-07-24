@@ -2,6 +2,7 @@ import qualified Data.Set as Set
 import Data.Set((\\))
 import qualified Data.Map as Map
 import Data.List(intersperse)
+import Control.DeepSeq
 import Debug.Trace
 
 data Cell = Cross | Nought | Blank deriving (Eq)
@@ -107,15 +108,21 @@ minimax field movesNext alpha beta cache =
                             
 step :: Field -> Int -> Field
 step field _ =
-    traceShow field $
+    --traceShow field $
     let player = if odd $ Set.size $ blanks field
                      then Cross
                      else Nought
         (score, move, Cache cache) = minimax field player (minBound :: Int) (maxBound :: Int) emptyCache
-    in  traceShow (Map.size cache) $
+    in  --traceShow (Map.size cache) $
         case move of
         Just n -> makeMove field n player
         Nothing -> field
+
+playOnce :: [Int] -> Int
+playOnce = length . blanks . foldl step blankField
+
+bench f 0 = print "Done"
+bench f n = (f [1..9]) `deepseq` (bench f (n-1))
                               
 main = do
 --    print testField3
@@ -126,6 +133,8 @@ main = do
 --    print $ minimax testField2 Nought
 --    print $ minimax testField3 Cross
     
-    print $ foldl step blankField [1..9]
+--    print $ foldl step blankField [1..9]
+
+    bench playOnce 1000
 --    print $ foldl step testField2 [4..9]
 
